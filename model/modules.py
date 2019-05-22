@@ -195,3 +195,36 @@ class VGGPyramid(nn.Module):
             outputs.append(x)
 
         return outputs
+
+
+class CCDecoder(nn.Module):
+    def __init__(self, in_planes, batch_norm=False):
+        super(CCDecoder, self).__init__()
+        self.low_dim = 64
+        self.eps = 1e-6
+
+        self.conv0 = conv_blck(in_planes, 128, batch_norm=batch_norm)
+        self.conv1 = conv_blck(128, 96, padding=4,  dilation=4,  batch_norm=batch_norm)
+        self.conv2 = conv_blck(96,  64, padding=12, dilation=12, batch_norm=batch_norm)
+        self.conv3 = conv_blck(64,  32, padding=16, dilation=16, batch_norm=batch_norm)
+        self.final = flow_head(32)
+
+    def forward(self, x1, x2=None, init_flow=None):
+        b, c, h, w = x1.shape
+        acc = []
+        N = c // self.low_dim
+        for i in range(N):
+            start_idx = i * self.low_dim
+            end_idx = i * self.low_dim + self.low_dim
+            x = self.conv0(torch.cat((x1[:, start_idx:end_idx, :, :],
+                                      x2[:, start_idx:end_idx, :, :],
+                                      init_flow), 1))
+            x = self.conv1(x)
+            x = self.conv2(x)
+            x = self.conv3(x)
+            x = self.final(x)
+            acc.append(x)
+
+        x1 = torch.stack(acc)
+        x = torch.mean(x1, 0)
+        return x
